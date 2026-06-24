@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import datetime
 import uuid
+import plotly.express as px  # <-- Nueva librería para gráficos interactivos
 
 # Configuración de la página
 st.set_page_config(
@@ -12,11 +13,10 @@ st.set_page_config(
 )
 
 # 🔒 SEGURIDAD: URLs ocultas usando Streamlit Secrets
-# Ya no dejamos los links expuestos en texto plano para proteger tu Google Sheets
 GAS_WEBAPP_URL = st.secrets["GAS_WEBAPP_URL"]
 SHEETS_CSV_URL = st.secrets["SHEETS_CSV_URL"]
 
-# ⚡ MEJORA TÉCNICA: Caché de datos por 60 segundos para optimizar la velocidad
+# ⚡ MEJORA TÉCNICA: Caché de datos por 60 segundos
 @st.cache_data(ttl=60)
 def cargar_datos():
     try:
@@ -26,6 +26,14 @@ def cargar_datos():
     except Exception as e:
         st.error(f"Error al conectar con la base de datos: {e}")
         return pd.DataFrame(columns=["ID", "Fecha", "Nombre", "Barrio", "Tipo", "Descripcion", "Estado"])
+
+# Función para colorear estados en la tabla
+def colorear_estado(val):
+    if str(val).lower() == 'pendiente':
+        return 'color: #ff4b4b; font-weight: bold;'
+    elif str(val).lower() == 'solucionado':
+        return 'color: #09ab3b; font-weight: bold;'
+    return ''
 
 # Título Principal con estilo profesional
 st.title("🏛️ Sistema de Gestión Territorial y Asistencia Legislativa")
@@ -62,28 +70,56 @@ with tab1:
         
         st.markdown("---")
         
-        # Sección de Gráficos de Distribución
+        # Sección de Gráficos de Distribución con Plotly
         g1, g2 = st.columns(2)
         
         with g1:
             st.subheader("📍 Reclamos por Barrio / Localidad")
             if "Barrio" in df_reclamos.columns:
-                barrio_counts = df_reclamos["Barrio"].value_counts()
-                st.bar_chart(barrio_counts)
+                barrio_counts = df_reclamos["Barrio"].value_counts().reset_index()
+                barrio_counts.columns = ["Barrio", "Cantidad"]
+                
+                # Gráfico interactivo Plotly
+                fig_bar = px.bar(barrio_counts, x="Barrio", y="Cantidad", 
+                                 color="Cantidad", color_continuous_scale="Blues",
+                                 text_auto=True) # text_auto pone el número sobre la barra
+                fig_bar.update_layout(margin=dict(l=0, r=0, t=30, b=0), xaxis_title="", yaxis_title="Cant. de Reclamos")
+                st.plotly_chart(fig_bar, use_container_width=True)
             else:
                 st.caption("No se encontró la columna 'Barrio'")
                 
         with g2:
             st.subheader("💡 Problemáticas más Frecuentes")
             if "Tipo" in df_reclamos.columns:
-                tipo_counts = df_reclamos["Tipo"].value_counts()
-                st.area_chart(tipo_counts)
+                tipo_counts = df_reclamos["Tipo"].value_counts().reset_index()
+                tipo_counts.columns = ["Tipo", "Cantidad"]
+                
+                # Gráfico de dona interactivo Plotly
+                fig_pie = px.pie(tipo_counts, names="Tipo", values="Cantidad", hole=0.4)
+                fig_pie.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+                st.plotly_chart(fig_pie, use_container_width=True)
             else:
                 st.caption("No se encontró la columna 'Tipo'")
 
         st.markdown("---")
         st.subheader("📋 Detalle de las Demandas Ciudadanas")
-        st.dataframe(df_reclamos, use_container_width=True)
+        
+        # Tabla estilizada según el estado
+        columnas_estado = [estado_col] if estado_col in df_reclamos.columns else []
+        df_estilizado = df_reclamos.style.map(colorear_estado, subset=columnas_estado)
+        st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
+        
+        # Nuevo Botón de Descarga
+        csv_export = df_reclamos.to_csv(index=False).encode('utf-8')
+        col_descarga, _ = st.columns([1, 3])
+        with col_descarga:
+            st.download_button(
+                label="📥 Exportar Reporte a CSV",
+                data=csv_export,
+                file_name=f"Reporte_San_Pedro_{datetime.date.today()}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
 
 # ==========================================
 # PESTAÑA 2: REGISTRO DE RECLAMOS
@@ -120,14 +156,20 @@ with tab2:
                     "estado": "Pendiente"
                 }
                 try:
-                    with st.spinner("Subiendo datos al Google Sheets..."):
+                    # Nuevo sistema de carga con st.status
+                    with st.status("📡 Conectando con la base de datos...", expanded=True) as status:
+                        st.write("Enviando paquete de datos...")
                         res = requests.post(GAS_WEBAPP_URL, json=datos, timeout=10)
+                        
                         if res.json().get("success"):
-                            st.success(f"🎉 ¡Registrado perfectamente! ID: {id_unico}")
+                            status.update(label="Reclamo registrado con éxito", state="complete", expanded=False)
+                            # Notificación Toast sutil
+                            st.toast(f"✅ ¡Guardado! ID: {id_unico}", icon="🎉")
                             st.balloons()
-                            st.clear_caches() # Limpia la caché para que el gráfico se actualice al instante al cargar nuevo dato
+                            st.cache_data.clear() # Limpia la memoria correctamente
                             st.rerun()
                         else:
+                            status.update(label="Error en el guardado", state="error", expanded=False)
                             st.error("Error al procesar en la hoja de cálculo.")
                 except Exception as e:
                     st.error(f"Error de conexión: {e}")
