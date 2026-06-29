@@ -267,11 +267,12 @@ with tab3:
     st.header("🤖 Redactor de Proyectos de Ordenanza Inteligente")
     st.caption("Convierta de forma automática las demandas vecinales en proyectos legislativos listos para su presentación.")
 
-    opciones_reclamos = [f"{row['ID']} - {row['Barrio']} ({row['Tipo']})" for _, row in df_reclamos.iterrows()]
+    df_reclamos["_idx"] = range(len(df_reclamos))
+    opciones_reclamos = [f"{i} | {row['Barrio']} ({row['Tipo']})" for i, row in df_reclamos.iterrows()]
     reclamo_seleccionado = st.selectbox("Selecciona el reclamo del vecino para procesar:", opciones_reclamos)
 
-    sel_id = reclamo_seleccionado.split(" - ")[0]
-    datos_fila = df_reclamos[df_reclamos["ID"].astype(str) == str(sel_id)].iloc[0]
+    sel_idx = int(reclamo_seleccionado.split(" | ")[0])
+    datos_fila = df_reclamos.loc[sel_idx]
 
     tipo_proyecto = st.radio("Tipo de documento técnico a generar:", ["Proyecto de Ordenanza", "Minuta de Comunicación / Pedido de Informes"])
 
