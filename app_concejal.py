@@ -376,7 +376,12 @@ if es_demo:
 # ==========================================
 # PESTAÑAS
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["📊 Tablero de Control", "📝 Registro de Reclamos", "🤖 Asistente de Ordenanzas IA"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Tablero de Control",
+    "📝 Registro de Reclamos", 
+    "🤖 Asistente de Ordenanzas IA",
+    "📍 Mapa Territorial"
+])
 
 # ==========================================
 # PESTAÑA 1: TABLERO DE CONTROL
@@ -608,4 +613,73 @@ ARTÍCULO 3°: De forma."""
                 data=borrador.encode("utf-8"),
                 file_name=f"Ordenanza_{datos_fila['ID']}_{DISTRITO}.txt",
                 mime="text/plain"
-            )
+            )# ==========================================
+# PESTAÑA 4: MAPA TERRITORIAL
+# ==========================================
+with tab4:
+    st.header("📍 Mapa Territorial de Reclamos")
+    st.caption("Visualización geográfica de los reclamos vecinales por barrio y categoría.")
+
+    COORDS_DEMO = [
+        {"Nombre": "María González", "Barrio": "Centro", "Tipo": "Alumbrado", "Estado": "Pendiente", "lat": -33.6789, "lon": -59.6721},
+        {"Nombre": "Carlos Pérez", "Barrio": "Bajo Tala", "Tipo": "Bacheo/Calles", "Estado": "Pendiente", "lat": -33.6823, "lon": -59.6698},
+        {"Nombre": "Ana Rodríguez", "Barrio": "Santa Lucía", "Tipo": "Agua/Cloacas", "Estado": "Solucionado", "lat": -33.6756, "lon": -59.6745},
+        {"Nombre": "Juan Martínez", "Barrio": "Las Casuarinas", "Tipo": "Basura/Limpieza", "Estado": "En gestión", "lat": -33.6801, "lon": -59.6712},
+        {"Nombre": "Laura Díaz", "Barrio": "Centro", "Tipo": "Seguridad", "Estado": "Pendiente", "lat": -33.6778, "lon": -59.6734},
+        {"Nombre": "Roberto Sánchez", "Barrio": "Bajo Tala", "Tipo": "Alumbrado", "Estado": "Pendiente", "lat": -33.6834, "lon": -59.6689},
+        {"Nombre": "Marta López", "Barrio": "Villa del Parque", "Tipo": "Bacheo/Calles", "Estado": "Pendiente", "lat": -33.6745, "lon": -59.6756},
+        {"Nombre": "Diego Fernández", "Barrio": "Santa Lucía", "Tipo": "Basura/Limpieza", "Estado": "Solucionado", "lat": -33.6767, "lon": -59.6723},
+        {"Nombre": "Susana Torres", "Barrio": "Centro", "Tipo": "Agua/Cloacas", "Estado": "En gestión", "lat": -33.6792, "lon": -59.6709},
+        {"Nombre": "Pablo Acosta", "Barrio": "Las Casuarinas", "Tipo": "Seguridad", "Estado": "Pendiente", "lat": -33.6812, "lon": -59.6741},
+        {"Nombre": "Valeria Romero", "Barrio": "Villa del Parque", "Tipo": "Alumbrado", "Estado": "En gestión", "lat": -33.6734, "lon": -59.6768},
+        {"Nombre": "Héctor Benítez", "Barrio": "Bajo Tala", "Tipo": "Bacheo/Calles", "Estado": "Solucionado", "lat": -33.6845, "lon": -59.6701},
+    ]
+
+    df_mapa = pd.DataFrame(COORDS_DEMO)
+
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        tipo_mapa = st.multiselect("Filtrar por categoría:", df_mapa["Tipo"].unique().tolist(), default=df_mapa["Tipo"].unique().tolist())
+    with col_m2:
+        estado_mapa = st.multiselect("Filtrar por estado:", df_mapa["Estado"].unique().tolist(), default=df_mapa["Estado"].unique().tolist())
+
+    df_mapa_filtrado = df_mapa[df_mapa["Tipo"].isin(tipo_mapa) & df_mapa["Estado"].isin(estado_mapa)]
+
+    fig_mapa = px.scatter_mapbox(
+        df_mapa_filtrado,
+        lat="lat",
+        lon="lon",
+        color="Tipo",
+        hover_name="Nombre",
+        hover_data={"Barrio": True, "Tipo": True, "Estado": True, "lat": False, "lon": False},
+        size_max=15,
+        zoom=13,
+        center={"lat": -33.679, "lon": -59.672},
+        mapbox_style="open-street-map",
+        title="Mapa de Reclamos — San Pedro",
+        height=500,
+        color_discrete_map={
+            "Alumbrado": "#f59e0b",
+            "Bacheo/Calles": "#ef4444",
+            "Agua/Cloacas": "#3b82f6",
+            "Basura/Limpieza": "#10b981",
+            "Seguridad": "#8b5cf6"
+        }
+    )
+    fig_mapa.update_layout(margin=dict(l=0, r=0, t=40, b=0))
+    st.plotly_chart(fig_mapa, use_container_width=True)
+
+    st.markdown("---")
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        st.subheader("🏘️ Reclamos por barrio")
+        barrio_counts = df_mapa_filtrado["Barrio"].value_counts().reset_index()
+        barrio_counts.columns = ["Barrio", "Cantidad"]
+        fig_barrio = px.bar(barrio_counts, x="Barrio", y="Cantidad",
+                           color="Cantidad", color_continuous_scale="Reds", text_auto=True)
+        fig_barrio.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+        st.plotly_chart(fig_barrio, use_container_width=True)
+    with col_r2:
+        st.subheader("📋 Detalle de reclamos")
+        st.dataframe(df_mapa_filtrado[["Nombre", "Barrio", "Tipo", "Estado"]],
+                    use_container_width=True, hide_index=True)
