@@ -267,6 +267,13 @@ details summary { color: var(--text-main) !important; }
 # 🔒 SEGURIDAD: URLs ocultas usando Streamlit Secrets
 GAS_WEBAPP_URL = st.secrets.get("GAS_WEBAPP_URL", "")
 SHEETS_CSV_URL = st.secrets.get("SHEETS_CSV_URL", "")
+# CSV público con coordenadas GPS (latitud/longitud) para el mapa territorial
+MAPA_CSV_URL = st.secrets.get(
+    "MAPA_CSV_URL",
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vSzRRBBX9BKgCdTuFI-tiITl5jXfQQSolJe36S1xaJaA4GYTJ0lIU9LBQcJwXpxQ7XrhcUZdzS0BrNd"
+    "/pub?output=csv",
+)
 DISTRITO = st.secrets.get("DISTRITO", "San Pedro")
 DEMO_USER = st.secrets.get("DEMO_USER", "concejal")
 DEMO_PASS = st.secrets.get("DEMO_PASS", "sanpedro2026")
@@ -336,6 +343,71 @@ def cargar_datos():
         return df, False
     except Exception:
         return pd.DataFrame(DATOS_DEMO), True
+
+
+def _resolver_columna(columnas, candidatos):
+    """Devuelve el nombre real de columna coincidiendo sin importar mayúsculas/espacios."""
+    normalizado = {str(c).strip().lower(): c for c in columnas}
+    for cand in candidatos:
+        if cand.lower() in normalizado:
+            return normalizado[cand.lower()]
+    return None
+
+
+@st.cache_data(ttl=60)
+def cargar_datos_mapa(csv_url):
+    """Lee reclamos con coordenadas desde Google Sheets. Fallback a demo si no hay lat/lon válidos."""
+    coords_demo = pd.DataFrame([
+        {"Nombre": "María González", "Barrio": "Centro", "Tipo": "Alumbrado", "Estado": "Pendiente", "lat": -33.6789, "lon": -59.6721},
+        {"Nombre": "Carlos Pérez", "Barrio": "Bajo Tala", "Tipo": "Bacheo/Calles", "Estado": "Pendiente", "lat": -33.6823, "lon": -59.6698},
+        {"Nombre": "Ana Rodríguez", "Barrio": "Santa Lucía", "Tipo": "Agua/Cloacas", "Estado": "Solucionado", "lat": -33.6756, "lon": -59.6745},
+        {"Nombre": "Juan Martínez", "Barrio": "Las Casuarinas", "Tipo": "Basura/Limpieza", "Estado": "En gestión", "lat": -33.6801, "lon": -59.6712},
+        {"Nombre": "Laura Díaz", "Barrio": "Centro", "Tipo": "Seguridad", "Estado": "Pendiente", "lat": -33.6778, "lon": -59.6734},
+        {"Nombre": "Roberto Sánchez", "Barrio": "Bajo Tala", "Tipo": "Alumbrado", "Estado": "Pendiente", "lat": -33.6834, "lon": -59.6689},
+        {"Nombre": "Marta López", "Barrio": "Villa del Parque", "Tipo": "Bacheo/Calles", "Estado": "Pendiente", "lat": -33.6745, "lon": -59.6756},
+        {"Nombre": "Diego Fernández", "Barrio": "Santa Lucía", "Tipo": "Basura/Limpieza", "Estado": "Solucionado", "lat": -33.6767, "lon": -59.6723},
+        {"Nombre": "Susana Torres", "Barrio": "Centro", "Tipo": "Agua/Cloacas", "Estado": "En gestión", "lat": -33.6792, "lon": -59.6709},
+        {"Nombre": "Pablo Acosta", "Barrio": "Las Casuarinas", "Tipo": "Seguridad", "Estado": "Pendiente", "lat": -33.6812, "lon": -59.6741},
+        {"Nombre": "Valeria Romero", "Barrio": "Villa del Parque", "Tipo": "Alumbrado", "Estado": "En gestión", "lat": -33.6734, "lon": -59.6768},
+        {"Nombre": "Héctor Benítez", "Barrio": "Bajo Tala", "Tipo": "Bacheo/Calles", "Estado": "Solucionado", "lat": -33.6845, "lon": -59.6701},
+    ])
+    try:
+        if not csv_url:
+            raise ValueError("Sin URL")
+        df = pd.read_csv(csv_url)
+        df = df.dropna(how="all")
+        if df.empty:
+            raise ValueError("Vacío")
+
+        df.columns = [str(c).strip() for c in df.columns]
+        col_lat = _resolver_columna(df.columns, ["latitud", "lat", "latitude", "y"])
+        col_lon = _resolver_columna(df.columns, ["longitud", "lon", "lng", "longitude", "x"])
+        if not col_lat or not col_lon:
+            raise ValueError("Sin columnas de coordenadas")
+
+        df["lat"] = pd.to_numeric(df[col_lat], errors="coerce")
+        df["lon"] = pd.to_numeric(df[col_lon], errors="coerce")
+        df = df.dropna(subset=["lat", "lon"])
+        if df.empty:
+            raise ValueError("Coordenadas vacías")
+
+        col_nombre = _resolver_columna(df.columns, ["Nombre", "nombre"])
+        col_barrio = _resolver_columna(df.columns, ["Barrio", "barrio", "direccion", "Direccion"])
+        col_tipo = _resolver_columna(df.columns, ["Tipo", "tipo", "categoria", "Categoria"])
+        col_estado = _resolver_columna(df.columns, ["Estado", "estado"])
+
+        out = pd.DataFrame({
+            "Nombre": df[col_nombre] if col_nombre else "Sin nombre",
+            "Barrio": df[col_barrio] if col_barrio else "Sin barrio",
+            "Tipo": df[col_tipo] if col_tipo else "Otros",
+            "Estado": df[col_estado] if col_estado else "Pendiente",
+            "lat": df["lat"],
+            "lon": df["lon"],
+        })
+        return out, False
+    except Exception:
+        return coords_demo, True
+
 
 def colorear_estado(val):
     val_lower = str(val).lower()
@@ -613,29 +685,20 @@ ARTÍCULO 3°: De forma."""
                 data=borrador.encode("utf-8"),
                 file_name=f"Ordenanza_{datos_fila['ID']}_{DISTRITO}.txt",
                 mime="text/plain"
-            )# ==========================================
+            )
+
+# ==========================================
 # PESTAÑA 4: MAPA TERRITORIAL
 # ==========================================
 with tab4:
     st.header("📍 Mapa Territorial de Reclamos")
     st.caption("Visualización geográfica de los reclamos vecinales por barrio y categoría.")
 
-    COORDS_DEMO = [
-        {"Nombre": "María González", "Barrio": "Centro", "Tipo": "Alumbrado", "Estado": "Pendiente", "lat": -33.6789, "lon": -59.6721},
-        {"Nombre": "Carlos Pérez", "Barrio": "Bajo Tala", "Tipo": "Bacheo/Calles", "Estado": "Pendiente", "lat": -33.6823, "lon": -59.6698},
-        {"Nombre": "Ana Rodríguez", "Barrio": "Santa Lucía", "Tipo": "Agua/Cloacas", "Estado": "Solucionado", "lat": -33.6756, "lon": -59.6745},
-        {"Nombre": "Juan Martínez", "Barrio": "Las Casuarinas", "Tipo": "Basura/Limpieza", "Estado": "En gestión", "lat": -33.6801, "lon": -59.6712},
-        {"Nombre": "Laura Díaz", "Barrio": "Centro", "Tipo": "Seguridad", "Estado": "Pendiente", "lat": -33.6778, "lon": -59.6734},
-        {"Nombre": "Roberto Sánchez", "Barrio": "Bajo Tala", "Tipo": "Alumbrado", "Estado": "Pendiente", "lat": -33.6834, "lon": -59.6689},
-        {"Nombre": "Marta López", "Barrio": "Villa del Parque", "Tipo": "Bacheo/Calles", "Estado": "Pendiente", "lat": -33.6745, "lon": -59.6756},
-        {"Nombre": "Diego Fernández", "Barrio": "Santa Lucía", "Tipo": "Basura/Limpieza", "Estado": "Solucionado", "lat": -33.6767, "lon": -59.6723},
-        {"Nombre": "Susana Torres", "Barrio": "Centro", "Tipo": "Agua/Cloacas", "Estado": "En gestión", "lat": -33.6792, "lon": -59.6709},
-        {"Nombre": "Pablo Acosta", "Barrio": "Las Casuarinas", "Tipo": "Seguridad", "Estado": "Pendiente", "lat": -33.6812, "lon": -59.6741},
-        {"Nombre": "Valeria Romero", "Barrio": "Villa del Parque", "Tipo": "Alumbrado", "Estado": "En gestión", "lat": -33.6734, "lon": -59.6768},
-        {"Nombre": "Héctor Benítez", "Barrio": "Bajo Tala", "Tipo": "Bacheo/Calles", "Estado": "Solucionado", "lat": -33.6845, "lon": -59.6701},
-    ]
-
-    df_mapa = pd.DataFrame(COORDS_DEMO)
+    df_mapa, mapa_es_demo = cargar_datos_mapa(MAPA_CSV_URL)
+    if mapa_es_demo:
+        st.info("📍 Sin coordenadas reales en la planilla — mostrando ubicaciones de ejemplo.")
+    else:
+        st.success(f"📍 Mostrando {len(df_mapa)} reclamos con GPS real desde Google Sheets.")
 
     col_m1, col_m2 = st.columns(2)
     with col_m1:
@@ -644,6 +707,12 @@ with tab4:
         estado_mapa = st.multiselect("Filtrar por estado:", df_mapa["Estado"].unique().tolist(), default=df_mapa["Estado"].unique().tolist())
 
     df_mapa_filtrado = df_mapa[df_mapa["Tipo"].isin(tipo_mapa) & df_mapa["Estado"].isin(estado_mapa)]
+
+    if len(df_mapa_filtrado) > 0:
+        centro_lat = float(df_mapa_filtrado["lat"].mean())
+        centro_lon = float(df_mapa_filtrado["lon"].mean())
+    else:
+        centro_lat, centro_lon = -33.679, -59.672
 
     fig_mapa = px.scatter_mapbox(
         df_mapa_filtrado,
@@ -654,7 +723,7 @@ with tab4:
         hover_data={"Barrio": True, "Tipo": True, "Estado": True, "lat": False, "lon": False},
         size_max=15,
         zoom=13,
-        center={"lat": -33.679, "lon": -59.672},
+        center={"lat": centro_lat, "lon": centro_lon},
         mapbox_style="open-street-map",
         title="Mapa de Reclamos — San Pedro",
         height=500,
