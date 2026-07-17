@@ -731,18 +731,24 @@ with tab4:
     else:
         centro_lat, centro_lon = -33.679, -59.672
 
+    df_mapa_filtrado = df_mapa_filtrado.copy()
+    df_mapa_filtrado["_marker_size"] = 22
+
     fig_mapa = px.scatter_mapbox(
         df_mapa_filtrado,
         lat="lat",
         lon="lon",
         color="Tipo",
+        size="_marker_size",
+        size_max=28,
         hover_name="Nombre",
-        hover_data={"Barrio": True, "Tipo": True, "Estado": True, "lat": False, "lon": False},
+        hover_data={"Barrio": True, "Tipo": True, "Estado": True, "lat": False, "lon": False, "_marker_size": False},
         zoom=13,
         center={"lat": centro_lat, "lon": centro_lon},
         mapbox_style="open-street-map",
         title="Mapa de Reclamos — San Pedro",
         height=560,
+        opacity=0.95,
         color_discrete_map={
             "Alumbrado": "#FFD600",
             "Bacheo/Calles": "#FF1744",
@@ -753,13 +759,6 @@ with tab4:
             "Otros": "#FF9100",
         },
         color_discrete_sequence=["#FF1744", "#FFD600", "#00E5FF", "#00E676", "#D500F9", "#FF9100", "#2979FF"],
-    )
-    fig_mapa.update_traces(
-        marker=dict(
-            size=22,
-            opacity=0.95,
-            line=dict(width=2.5, color="#000000"),
-        )
     )
     fig_mapa.update_layout(
         margin=dict(l=0, r=0, t=40, b=0),
