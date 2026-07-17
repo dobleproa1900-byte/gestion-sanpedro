@@ -738,21 +738,38 @@ with tab4:
         color="Tipo",
         hover_name="Nombre",
         hover_data={"Barrio": True, "Tipo": True, "Estado": True, "lat": False, "lon": False},
-        size_max=15,
         zoom=13,
         center={"lat": centro_lat, "lon": centro_lon},
         mapbox_style="open-street-map",
         title="Mapa de Reclamos — San Pedro",
-        height=500,
+        height=560,
         color_discrete_map={
-            "Alumbrado": "#f59e0b",
-            "Bacheo/Calles": "#ef4444",
-            "Agua/Cloacas": "#3b82f6",
-            "Basura/Limpieza": "#10b981",
-            "Seguridad": "#8b5cf6"
-        }
+            "Alumbrado": "#FFD600",
+            "Bacheo/Calles": "#FF1744",
+            "Pozo en la calle": "#FF1744",
+            "Agua/Cloacas": "#00E5FF",
+            "Basura/Limpieza": "#00E676",
+            "Seguridad": "#D500F9",
+            "Otros": "#FF9100",
+        },
+        color_discrete_sequence=["#FF1744", "#FFD600", "#00E5FF", "#00E676", "#D500F9", "#FF9100", "#2979FF"],
     )
-    fig_mapa.update_layout(margin=dict(l=0, r=0, t=40, b=0))
+    fig_mapa.update_traces(
+        marker=dict(
+            size=22,
+            opacity=0.95,
+            line=dict(width=2.5, color="#000000"),
+        )
+    )
+    fig_mapa.update_layout(
+        margin=dict(l=0, r=0, t=40, b=0),
+        legend=dict(
+            bgcolor="rgba(15,15,35,0.85)",
+            bordercolor="#000000",
+            borderwidth=1,
+            font=dict(size=13, color="#ffffff"),
+        ),
+    )
     st.plotly_chart(fig_mapa, use_container_width=True)
 
     st.markdown("---")
