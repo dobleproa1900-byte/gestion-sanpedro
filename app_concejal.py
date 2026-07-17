@@ -4,6 +4,7 @@ import requests
 import datetime
 import uuid
 import plotly.express as px
+import plotly.graph_objects as go
 
 # Configuración de la página
 st.set_page_config(
@@ -731,42 +732,69 @@ with tab4:
     else:
         centro_lat, centro_lon = -33.679, -59.672
 
-    df_mapa_filtrado = df_mapa_filtrado.copy()
-    df_mapa_filtrado["_marker_size"] = 22
+    COLORES_TIPO = {
+        "Alumbrado": "#FFD600",
+        "Bacheo/Calles": "#FF1744",
+        "Pozo en la calle": "#FF1744",
+        "Agua/Cloacas": "#00E5FF",
+        "Basura/Limpieza": "#00E676",
+        "Seguridad": "#D500F9",
+        "Otros": "#FF9100",
+    }
+    PALETA_EXTRA = ["#FF1744", "#FFD600", "#00E5FF", "#00E676", "#D500F9", "#FF9100", "#2979FF"]
 
-    fig_mapa = px.scatter_mapbox(
-        df_mapa_filtrado,
-        lat="lat",
-        lon="lon",
-        color="Tipo",
-        size="_marker_size",
-        size_max=28,
-        hover_name="Nombre",
-        hover_data={"Barrio": True, "Tipo": True, "Estado": True, "lat": False, "lon": False, "_marker_size": False},
-        zoom=13,
-        center={"lat": centro_lat, "lon": centro_lon},
-        mapbox_style="open-street-map",
+    fig_mapa = go.Figure()
+    tipos_orden = list(df_mapa_filtrado["Tipo"].dropna().unique()) if len(df_mapa_filtrado) else []
+    for i, tipo in enumerate(tipos_orden):
+        grupo = df_mapa_filtrado[df_mapa_filtrado["Tipo"] == tipo]
+        color = COLORES_TIPO.get(tipo, PALETA_EXTRA[i % len(PALETA_EXTRA)])
+        fig_mapa.add_trace(
+            go.Scattermapbox(
+                lat=grupo["lat"].tolist(),
+                lon=grupo["lon"].tolist(),
+                mode="markers",
+                name=str(tipo),
+                text=grupo["Nombre"].astype(str).tolist(),
+                customdata=list(
+                    zip(
+                        grupo["Barrio"].astype(str),
+                        grupo["Tipo"].astype(str),
+                        grupo["Estado"].astype(str),
+                    )
+                ),
+                hovertemplate=(
+                    "<b>%{text}</b><br>"
+                    "Barrio: %{customdata[0]}<br>"
+                    "Tipo: %{customdata[1]}<br>"
+                    "Estado: %{customdata[2]}<br>"
+                    "<extra></extra>"
+                ),
+                marker=dict(
+                    size=18,
+                    color=color,
+                    opacity=0.95,
+                    symbol="marker",
+                ),
+                # Sin clustering: cada reclamo es un alfiler individual
+                cluster=dict(enabled=False),
+            )
+        )
+
+    fig_mapa.update_layout(
         title="Mapa de Reclamos — San Pedro",
         height=560,
-        opacity=0.95,
-        color_discrete_map={
-            "Alumbrado": "#FFD600",
-            "Bacheo/Calles": "#FF1744",
-            "Pozo en la calle": "#FF1744",
-            "Agua/Cloacas": "#00E5FF",
-            "Basura/Limpieza": "#00E676",
-            "Seguridad": "#D500F9",
-            "Otros": "#FF9100",
-        },
-        color_discrete_sequence=["#FF1744", "#FFD600", "#00E5FF", "#00E676", "#D500F9", "#FF9100", "#2979FF"],
-    )
-    fig_mapa.update_layout(
         margin=dict(l=0, r=0, t=40, b=0),
         legend=dict(
             bgcolor="rgba(15,15,35,0.85)",
             bordercolor="#000000",
             borderwidth=1,
             font=dict(size=13, color="#ffffff"),
+            title_text="Categoría",
+        ),
+        mapbox=dict(
+            style="open-street-map",
+            center=dict(lat=centro_lat, lon=centro_lon),
+            zoom=14,
         ),
     )
     st.plotly_chart(fig_mapa, use_container_width=True)
