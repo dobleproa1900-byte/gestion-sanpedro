@@ -271,7 +271,7 @@ SHEETS_CSV_URL = st.secrets.get("SHEETS_CSV_URL", "")
 MAPA_CSV_URL = st.secrets.get(
     "MAPA_CSV_URL",
     "https://docs.google.com/spreadsheets/d/e/"
-    "2PACX-1vSzRRBBX9BKgCdTuFI-tiITl5jXfQQSolJe36S1xaJaA4GYTJ0lIU9LBQcJwXpxQ7XrhcUZdzS0BrNd"
+    "2PACX-1vQOwmQnvQKFOWA5_FbTUxzVH-XNNPIf5pyum_1dD1JdeH_JoVVBKAPokWyCHuKU9fvxhNPSas2A20zu"
     "/pub?output=csv",
 )
 DISTRITO = st.secrets.get("DISTRITO", "San Pedro")
@@ -354,6 +354,23 @@ def _resolver_columna(columnas, candidatos):
     return None
 
 
+def _parse_coord(valor):
+    """Convierte coordenadas del Sheets (-33.675.761 o 'No disponible') a float."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return None
+    s = str(valor).strip().replace(",", ".")
+    if s.lower() in ("", "nan", "none", "no disponible", "n/a"):
+        return None
+    # Sheets a veces formatea -33.675761 como -33.675.761
+    if s.count(".") > 1:
+        partes = s.split(".")
+        s = partes[0] + "." + "".join(partes[1:])
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 @st.cache_data(ttl=60)
 def cargar_datos_mapa(csv_url):
     """Lee reclamos con coordenadas desde Google Sheets. Fallback a demo si no hay lat/lon válidos."""
@@ -385,19 +402,19 @@ def cargar_datos_mapa(csv_url):
         if not col_lat or not col_lon:
             raise ValueError("Sin columnas de coordenadas")
 
-        df["lat"] = pd.to_numeric(df[col_lat], errors="coerce")
-        df["lon"] = pd.to_numeric(df[col_lon], errors="coerce")
+        df["lat"] = df[col_lat].map(_parse_coord)
+        df["lon"] = df[col_lon].map(_parse_coord)
         df = df.dropna(subset=["lat", "lon"])
         if df.empty:
             raise ValueError("Coordenadas vacías")
 
-        col_nombre = _resolver_columna(df.columns, ["Nombre", "nombre"])
+        col_nombre = _resolver_columna(df.columns, ["Nombre", "nombre", "ID", "id"])
         col_barrio = _resolver_columna(df.columns, ["Barrio", "barrio", "direccion", "Direccion"])
         col_tipo = _resolver_columna(df.columns, ["Tipo", "tipo", "categoria", "Categoria"])
         col_estado = _resolver_columna(df.columns, ["Estado", "estado"])
 
         out = pd.DataFrame({
-            "Nombre": df[col_nombre] if col_nombre else "Sin nombre",
+            "Nombre": df[col_nombre] if col_nombre else (df[col_barrio] if col_barrio else "Sin nombre"),
             "Barrio": df[col_barrio] if col_barrio else "Sin barrio",
             "Tipo": df[col_tipo] if col_tipo else "Otros",
             "Estado": df[col_estado] if col_estado else "Pendiente",
